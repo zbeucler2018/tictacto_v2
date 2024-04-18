@@ -91,10 +91,15 @@ class Game:
     """Places a piece on the board at the given x,y"""
     if not self.check_valid_move(x, y, piece): raise Exception(f"The move {piece._typename.name} to ({x},{y}) is not a valid move")
     index = self.convert_xy_to_indx(x, y)
+    # remove a po from the player
+    if piece._typename == t_Piece.PO:
+      self.po_per_player[self.current_player_indx] -= 1
+    # place the pi on the left for rendering purposes
     if piece._typename == t_Piece.PI:
       self.board[index][0] = piece
     else:
       self.board[index][1] = piece
+    
 
   def rotate_player(self) -> None:
     """Rotates to the next player's turn"""
@@ -110,7 +115,7 @@ class Game:
     def check_current_player_in_space(space: list[Piece, Piece]):
       return space[0].player_indx == self.current_player_indx or space[1].player_indx == self.current_player_indx
       
-    magic_number = 5
+    magic_number = 5 # Need to get 5 in a row to win
 
     # check horizontal
     for y in range(self.board_size):
