@@ -22,7 +22,6 @@ class t_Piece(Enum):
   PI = 1
   PE = 2
   PO = 3
-  TOTAL = auto()
 
 @dataclass
 class Piece:
@@ -66,30 +65,30 @@ class Game:
       print()
     print()
 
-  def check_valid_move(self, x: int, y: int, piece: Piece) -> bool:
-    """I might want to invert the logic to make this more intuitive. is_valid starts as True and then is false if certain rules fail"""
+  def validate_move(self, x: int, y: int, piece: Piece) -> bool:
+    """Returns true if move does not break game rules, false otherwise"""
     is_valid = False
     index = self.convert_xy_to_indx(x, y)
-    # 1. move is within board
-    if x < 0 or x >= self.board_size or y < 0 or y >= self.board_size:
+
+    # 1. PEs and POs can only be placed in empty spaces
+    if piece._typename == t_Piece.PE and self.board[index][1]._typename == t_Piece.EMPTY or \
+      piece._typename == t_Piece.PO and self.board[index][1]._typename == t_Piece.EMPTY:
       is_valid = True
-    # 2. PEs and POs can only be placed in empty spaces
-    if piece._typename != t_Piece.PI and self.board[index][1]._typename == t_Piece.EMPTY:
-      is_valid = True
-    # 3. PIs can only be placed within PEs
+    # 2. PIs can only be placed within PEs
     if piece._typename == t_Piece.PI and self.board[index][1]._typename == t_Piece.PE:
       is_valid = True
-    # 4. Player has PO's left to use
-      # 4.1 Ensure piece is PO
-      # 4.2 Ensure the PO space is empty
-      # 4.3 Ensure the player has POs left to use
-    if piece._typename == t_Piece.PO and self.board[index][1]._typename == t_Piece.EMPTY and self.po_per_player[self.current_player_indx] > 0:
+    # 3. Player has PO's left to use
+    if piece._typename == t_Piece.PO and self.po_per_player[self.current_player_indx] > 0:
       is_valid = True
+    # 4. move is within board
+    if x < 0 or x >= self.board_size or y < 0 or y >= self.board_size:
+      is_valid = False
+
     return is_valid
 
-  def make_move(self, x: int, y: int, piece: Piece) -> None:
+  def make_move(self, x: int, y: int, piece: Piece) -> bool:
     """Places a piece on the board at the given x,y"""
-    if not self.check_valid_move(x, y, piece): raise Exception(f"The move {piece._typename.name} to ({x},{y}) is not a valid move")
+    if not self.validate_move(x, y, piece): return False
     index = self.convert_xy_to_indx(x, y)
     # remove a po from the player
     if piece._typename == t_Piece.PO:
@@ -99,7 +98,7 @@ class Game:
       self.board[index][0] = piece
     else:
       self.board[index][1] = piece
-    
+    return True
 
   def rotate_player(self) -> None:
     """Rotates to the next player's turn"""
