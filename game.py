@@ -5,6 +5,7 @@ from enum import Enum, auto
 from typing import Optional
 
 
+
 class Colors:
   BLACK = '\033[30m'
   RED = '\033[31m'
@@ -43,14 +44,22 @@ class Piece:
         return self.color + "?" + Colors.RESET
 
 
+
+
+
+
+
+
 class Game:
 
   def __init__(self):
-    self.board_size = 8
-    self.board = [ [Piece(t_Piece.EMPTY) for _ in range(2)] for _ in range(self.board_size**2) ]
     self.n_players = 2
     self.current_player_indx = 0
-    self.po_per_player = [8] * self.n_players
+    self.max_pos_per_player = 8
+    self.po_per_player = [self.max_pos_per_player] * self.n_players
+    self.board_size = 8
+    self.board = [ [Piece(t_Piece.EMPTY) for _ in range(self.n_players)] for _ in range(self.board_size**self.n_players) ]
+    self.n_pieces_in_a_row_to_win = 5 # Need to get 5 in a row to win
 
   def convert_xy_to_indx(self, x: int, y: int) -> int:
     """Converts (x,y) cordinates to an index on the board"""
@@ -114,37 +123,43 @@ class Game:
     def check_current_player_in_space(space: list[Piece, Piece]):
       return space[0].player_indx == self.current_player_indx or space[1].player_indx == self.current_player_indx
       
-    magic_number = 5 # Need to get 5 in a row to win
-
     # check horizontal
     for y in range(self.board_size):
-      for x in range(magic_number-1): # TODO: update to self.board_size - magin_number + 1
+      for x in range(self.n_pieces_in_a_row_to_win-1): # TODO: update to self.board_size - magin_number + 1
         index = self.convert_xy_to_indx(x, y)
-        board_spaces = [self.board[index+w] for w in range(magic_number)]
+        board_spaces = [self.board[index+w] for w in range(self.n_pieces_in_a_row_to_win)]
         if all(check_current_player_in_space(bs) for bs in board_spaces):
           return True
     # check vertical
     for x in range(self.board_size):
-      for y in range(magic_number-1): # TODO: update to self.board_size - magin_number + 1
+      for y in range(self.n_pieces_in_a_row_to_win-1): # TODO: update to self.board_size - magin_number + 1
         index = self.convert_xy_to_indx(x, y)
-        board_spaces = [self.board[index + self.board_size * w] for w in range(magic_number)]
+        board_spaces = [self.board[index + self.board_size * w] for w in range(self.n_pieces_in_a_row_to_win)]
         if all(check_current_player_in_space(bs) for bs in board_spaces):
           return True
     # check tl-br diagonal
-    for y in range(self.board_size - magic_number + 1):
-      for x in range(self.board_size - magic_number + 1):
+    for y in range(self.board_size - self.n_pieces_in_a_row_to_win + 1):
+      for x in range(self.board_size - self.n_pieces_in_a_row_to_win + 1):
         index = self.convert_xy_to_indx(x, y)
-        board_spaces = [self.board[index + (self.board_size + 1) * w] for w in range(magic_number)]
+        board_spaces = [self.board[index + (self.board_size + 1) * w] for w in range(self.n_pieces_in_a_row_to_win)]
         if all(check_current_player_in_space(bs) for bs in board_spaces):
           return True
     # check tr-bl diagonal
-    for y in range(magic_number - 1, self.board_size):
-      for x in range(self.board_size - magic_number + 1):
+    for y in range(self.n_pieces_in_a_row_to_win - 1, self.board_size):
+      for x in range(self.board_size - self.n_pieces_in_a_row_to_win + 1):
         index = self.convert_xy_to_indx(x, y)
-        board_spaces = [self.board[index - (self.board_size - 1) * w] for w in range(magic_number)]
+        board_spaces = [self.board[index - (self.board_size - 1) * w] for w in range(self.n_pieces_in_a_row_to_win)]
         if all(check_current_player_in_space(bs) for bs in board_spaces):
           return True
+        
+    # TODO: Check for tie game (board full / no more possible moves)
     return False
+
+  def play(self): 
+    return
+
+  def clear_board(self) -> None:
+    self.board = [ [Piece(t_Piece.EMPTY) for _ in range(self.n_players)] for _ in range(self.board_size**self.n_players) ]
 
 
 
