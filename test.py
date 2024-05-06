@@ -1,22 +1,32 @@
 import pytest
-from game import Game, Piece, t_Piece
+from game import Game, Piece, t_Piece, Colors
+
+
+"""
+board representation is right and its getter/setters are correct too
+
+I want to make sure that:
+
+-  [x] a player can win in any direction
+    - [ ] a player can cross over another player with a pi and win
+- [x] pis can only be placed in a spot with a empty pe
+- [x] pes can only be placed in empty spots
+- [x] pos can only be placed in empty spots
+- [x] only 8 pos per player
+- [ ] game ends in a tie when there are no more valid spots left
+"""
+
 
 @pytest.fixture
 def game():
     return Game()
 
-def test_convert_xy_to_indx(game):
-    assert game.convert_xy_to_indx(0, 0) == 0
-    assert game.convert_xy_to_indx(1, 1) == 9
-    assert game.convert_xy_to_indx(7, 7) == 63
 
-@pytest.mark.skip()
-def check_rules(game):
-    # cannot place pi on empty square
-    # pi in pe can win for both plyers
-    # po blocks win
-    # limit 8 pos max per player
-    return
+def test_convert_xy_to_indx(game: Game):
+    assert game.board.convert_xy_to_indx(0, 0) == 0
+    assert game.board.convert_xy_to_indx(1, 1) == 9
+    assert game.board.convert_xy_to_indx(7, 7) == 63
+
 
 def test_validate_move(game: Game) -> None:
     assert game.validate_move(3, 4, Piece(t_Piece.PE)), "Could not place pe on empty valid spot"
@@ -25,85 +35,76 @@ def test_validate_move(game: Game) -> None:
     assert not game.validate_move(-1, 0, Piece(t_Piece.PE)), "Was able to place piece (pe) outside of board (-1,0)"
     assert not game.validate_move(8, 5, Piece(t_Piece.PE)), "Was able to place piece (pe) outside of board (8,5)"
 
-def test_make_move(game: Game):
-    game.make_move(0, 0, Piece(t_Piece.PE))
-    assert game.board[0][1]._typename == t_Piece.PE
-    game.make_move(0, 0, Piece(t_Piece.PI))
-
 
 def test_rotate_player(game: Game):
     initial_player_indx = game.current_player_indx
     game.rotate_player()
     assert initial_player_indx != game.current_player_indx
 
+
 def test_check_winner(game: Game):
-    assert not game.check_winner()  # No winner initially
+    game.current_player_indx = 1
+    assert not game.check_winner(), "Detected win when the board was empty"
 
-    n_pieces_in_a_row_to_win = 5
+    # Test horizontal wins
+    for y in range(game.board.board_size):
+        for x in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
+            for i in range(game.n_pieces_in_a_row_to_win):
+                game.make_move(x + i, y, Piece(t_Piece.PE, player_indx=game.current_player_indx, color=Colors.BLUE))
+            assert game.check_winner(), f"Could not detect horizontal win at ({x}, {y})"
+            game.board.empty_board()
 
-    # horizontal
-    for h in range(game.board_size - 3):
-        [game.make_move(i, h, Piece(t_Piece.PE, player_indx=game.current_player_indx)) for i in range(game.n_pieces_in_a_row_to_win)]
-        assert game.check_winner()
-        game.clear_board()
+    # Test vertical wins
+    for x in range(game.board.board_size):
+        for y in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
+            for i in range(game.n_pieces_in_a_row_to_win):
+                game.make_move(x, y + i, Piece(t_Piece.PE, player_indx=game.current_player_indx, color=Colors.BLUE))
+            assert game.check_winner(), f"Could not detect vertical win at ({x}, {y})"
+            game.board.empty_board()
 
-    # vertical
-    for v in range(game.board_size - 3):
-        [game.make_move(v, i, Piece(t_Piece.PE, player_indx=game.current_player_indx)) for i in range(game.n_pieces_in_a_row_to_win)]
-        assert game.check_winner()
-        game.clear_board()
+    # Test diagonal (top-left to bottom-right) wins
+    for y in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
+        for x in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
+            for i in range(game.n_pieces_in_a_row_to_win):
+                game.make_move(x + i, y + i, Piece(t_Piece.PE, player_indx=game.current_player_indx, color=Colors.MAGENTA))
+            assert game.check_winner(), f"Could not detect diagonal (top-left to bottom-right) win at ({x}, {y})"
+            game.board.empty_board()
 
-"""
-
-board representation is right and its getter/setters are correct too
-
-I want to make sure that:
-
--  [ ] a player can win in any direction
-    - [ ] a player can cross over another player with a pi and win
-- [ ] pis can only be placed in a spot with a empty pe
-- [ ] pes can only be placed in empty spots
-- [ ] pos can only be placed in empty spots
-- [ ] only 8 pos per player
-- [ ] game ends in a tie when there are no more valid spots left
+    # Test diagonal (top-right to bottom-left) wins
+    for y in range(game.n_pieces_in_a_row_to_win - 1, game.board.board_size):
+        for x in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
+            for i in range(game.n_pieces_in_a_row_to_win):
+                game.make_move(x + i, y - i, Piece(t_Piece.PE, player_indx=game.current_player_indx, color=Colors.GREEN))
+            assert game.check_winner(), f"Could not detect diagonal (top-right to bottom-left) win at ({x}, {y})"
+            game.board.empty_board()
 
 
+def test_po_rules(game: Game):
+    game.current_player_indx = 1
+    assert game.po_per_player[game.current_player_indx] == game.max_pos_per_player, "Started the game with the wrong amount of POs"
+    game.make_move(0, 0, Piece(t_Piece.PO, player_indx=game.current_player_indx))
+    assert game.po_per_player[game.current_player_indx] == game.max_pos_per_player - 1, "PO placement not reflected in record"
+    game.po_per_player[game.current_player_indx] = 0
+    assert not game.make_move(0, 1, Piece(t_Piece.PO, player_indx=game.current_player_indx)), "Was able to place a PO when none are left"
 
-"""
-def is_board_spot_completely_empty(x: int, y: int, g: Game) -> bool:
-    indx = g.convert_xy_to_indx(x, y)
-    return g.board[indx][0]._typename == t_Piece.EMPTY and g.board[indx][1]._typename == t_Piece.EMPTY
 
-def test_piece_rules(game: Game): # , _piece: Piece):
+def test_piece_rules(game: Game):
+
+    def is_board_spot_completely_empty(x: int, y: int, g: Game) -> bool:
+        return g.board[x, y][0]._typename == t_Piece.EMPTY and g.board[x, y][1]._typename == t_Piece.EMPTY
 
     # pes can only be placed in empty spots
-    assert is_board_spot_completely_empty(0, 0, game), f"The test spot is not completely empty ({game.board[0]})"
+    assert is_board_spot_completely_empty(0, 0, game), f"The test spot is not completely empty ({game.board[0, 0]})"
     assert game.make_move(0, 0, Piece(t_Piece.PE)), "Was not able to place a PE in a empty spot"
 
     # pos can only be placed in empty spots
-    assert is_board_spot_completely_empty(0, 1, game), f"The test spot is not completely empty ({game.board[1]})"
-    assert game.make_move(0, 1, Piece(t_Piece.PO)), "Was not able to place a PO in a empty spot"
+    assert is_board_spot_completely_empty(1, 1, game), f"The test spot is not completely empty ({game.board[1, 1]})"
+    assert game.make_move(1, 1, Piece(t_Piece.PO)), "Was not able to place a PO in a empty spot"
 
     # pis can only be placed in a spot with a empty pe
-    assert not game.make_move(0, 0, Piece(t_Piece.PI)), "Was able to place a PI in a empty spot"
-    assert not game.make_move(0, 1, Piece(t_Piece.PI)), "Was able to place a PI spot with a PO"
-
-
+    assert is_board_spot_completely_empty(2, 2, game) and not game.make_move(2, 2, Piece(t_Piece.PI)), "Was able to place a PI in a empty spot"
+    assert not game.make_move(1, 1, Piece(t_Piece.PI)), "Was able to place a PI spot with a PO"
 
     # pis can only be placed in a spot with a empty pe
-    assert game.board[0][0]._typename == t_Piece.EMPTY and game.board[0][1]._typename == t_Piece.PE
-    assert game.make_move(0, 0, Piece(t_Piece.PI)), "Was not able to place pi in a pe"
-    
-
-
-
-"""
-0  | 0  1  2  3  4  5  6  7
-1  | 8  9  10 11 12 13 14 15
-2  | 16 17 18 19 20 21 22 23
-3  | 24 25 26 27 28 29 30 31
-4  | 32 33 34 35 36 37 38 39
-5  | 40 41 42 43 44 45 46 47
-6  | 48 49 50 51 52 53 54 55
-7  | 56 57 58 59 60 61 62 63
-"""
+    assert game.board[0, 0][0]._typename == t_Piece.EMPTY and game.board[0, 0][1]._typename == t_Piece.PE
+    assert game.make_move(0, 0, Piece(t_Piece.PI)), "Was not able to place a PI in a PE"
