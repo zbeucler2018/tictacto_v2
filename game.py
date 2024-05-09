@@ -1,3 +1,4 @@
+# game.py
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -32,7 +33,7 @@ class Piece:
   def to_str(self) -> str:
     match self._typename:
       case t_Piece.EMPTY:
-        return self.color + "E" + Colors.RESET
+        return self.color + " " + Colors.RESET
       case t_Piece.PI:
         return self.color + "." + Colors.RESET
       case t_Piece.PE:
@@ -107,33 +108,38 @@ class Game:
   def print_board(self) -> None:
     print(self.board)
   
-  def validate_move(self, x: int, y: int, piece: Piece) -> bool:
+  def validate_move(self, x: int, y: int, piece_type: t_Piece) -> bool:
     """Returns true if the move is valid.
     1. PE's and PO's can only be placed in empty spaces.
     2. PI's can only be placed within PE's.
     3. Player has not used all 8 of their PO's.
     4. Move is within the board.
     """
+    reason = -1
     is_valid = False
     # 1. PEs and POs can only be placed in empty spaces
-    if (piece._typename == t_Piece.PE or piece._typename == t_Piece.PO) and self.board[x, y][1]._typename == t_Piece.EMPTY:
+    if (piece_type == t_Piece.PE or piece_type == t_Piece.PO) and self.board[x, y][1]._typename == t_Piece.EMPTY:
+      reason = 1
       is_valid = True
     # 2. PIs can only be placed within PEs
-    if piece._typename == t_Piece.PI and self.board[x, y][1]._typename == t_Piece.PE:
+    if piece_type == t_Piece.PI and self.board[x, y][1]._typename == t_Piece.PE:
+      reason = 2
       is_valid = True
     # 3. Player has used all 8 of their PO's
-    if piece._typename == t_Piece.PO and self.po_per_player[self.current_player_indx] < 1:
+    if piece_type == t_Piece.PO and self.po_per_player[self.current_player_indx] == 0:
+      reason = 3
       is_valid = False
     # 4. Move is within the board
     if x < 0 or x >= self.board.board_size or y < 0 or y >= self.board.board_size:
+      reason = 4
       is_valid = False
     
-    return is_valid
+    return is_valid, reason
 
   def make_move(self, x: int, y: int, piece_type: t_Piece) -> bool:
     """Places a piece on the board."""
-    piece = Piece(piece_type, player_indx=self.current_player_indx)
-    if not self.validate_move(x, y, piece): return False # NOTE: Should this raise an error instead?
+    #if not self.validate_move(x, y, piece_type): return False # NOTE: Should this raise an error instead?
+    piece = Piece(piece_type, player_indx=self.current_player_indx, color=Colors.GREEN if self.current_player_indx == 0 else Colors.BLUE)
     self.board[x, y] = piece
     if piece._typename == t_Piece.PO: # decrement player PO count
         self.po_per_player[self.current_player_indx] = self.po_per_player[self.current_player_indx] - 1
@@ -150,7 +156,7 @@ class Game:
     for x in range(self.board.board_size):
         for y in range(self.board.board_size):
             for p in (t_Piece.PE, t_Piece.PI, t_Piece.PO):
-                if self.validate_move(x, y, Piece(p, player_indx=self.current_player_indx)):
+                if self.validate_move(x, y, p)[0]:
                     return False
     return True
 
@@ -172,6 +178,7 @@ class Game:
         for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             board_spaces = [self.board[x+w, y] for w in range(self.n_pieces_in_a_row_to_win)]
             if all(check_current_player_in_space(bs) for bs in board_spaces):
+                print(f"player_{self.current_player_indx} won h")
                 return True
   
     # Check vertical
@@ -179,17 +186,20 @@ class Game:
         for y in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             board_spaces = [self.board[x, y+w] for w in range(self.n_pieces_in_a_row_to_win)]
             if all(check_current_player_in_space(bs) for bs in board_spaces):
+                print(f"player_{self.current_player_indx} won v")
                 return True
   
     # Check diagonals (top-left to bottom-right)
     for y in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
         for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             if check_diagonal(x, y, 1, 1):
+                print(f"player_{self.current_player_indx} won tl-br")
                 return True
   
     # Check diagonals (top-right to bottom-left)
     for y in range(self.n_pieces_in_a_row_to_win - 1, self.board.board_size):
         for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             if check_diagonal(x, y, 1, -1):
+                print(f"player_{self.current_player_indx} won tr-bl")
                 return True
     return False

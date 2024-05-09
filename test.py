@@ -1,5 +1,6 @@
 import pytest
 from game import Game, Piece, t_Piece, Colors
+from pepipoenv import PePiPoEnv
 
 
 """
@@ -29,11 +30,11 @@ def test_convert_xy_to_indx(game: Game):
 
 
 def test_validate_move(game: Game) -> None:
-    assert game.validate_move(3, 4, Piece(t_Piece.PE)), "Could not place pe on empty valid spot"
-    assert game.validate_move(2, 2, Piece(t_Piece.PO)), "Could not place po on empty valid spot"
-    assert not game.validate_move(0, 0, Piece(t_Piece.PI)), "Was able to place a pi in an valid empty spot"
-    assert not game.validate_move(-1, 0, Piece(t_Piece.PE)), "Was able to place piece (pe) outside of board (-1,0)"
-    assert not game.validate_move(8, 5, Piece(t_Piece.PE)), "Was able to place piece (pe) outside of board (8,5)"
+    assert game.validate_move(0, 3, t_Piece.PE), "Could not place pe on empty valid spot"
+    assert game.validate_move(2, 2, t_Piece.PO), "Could not place po on empty valid spot"
+    assert not game.validate_move(0, 0, t_Piece.PI), "Was able to place a pi in an valid empty spot"
+    assert not game.validate_move(-1, 0, t_Piece.PE), "Was able to place piece (pe) outside of board (-1,0)"
+    assert not game.validate_move(8, 5, t_Piece.PE), "Was able to place piece (pe) outside of board (8,5)"
 
 
 def test_rotate_player(game: Game):
@@ -108,3 +109,41 @@ def test_piece_rules(game: Game):
     # pis can only be placed in a spot with a empty pe
     assert game.board[0, 0][0]._typename == t_Piece.EMPTY and game.board[0, 0][1]._typename == t_Piece.PE
     assert game.make_move(0, 0, t_Piece.PI), "Was not able to place a PI in a PE"
+
+
+@pytest.fixture
+def env():
+    return PePiPoEnv()
+
+@pytest.mark.skip("Not written yet")
+def test_action_mask_generation(env: PePiPoEnv):
+    return
+
+@pytest.mark.skip("Not written yet")
+def test_observation_generation(env: PePiPoEnv):
+    return
+
+@pytest.mark.skip("Might not be useful")
+def test_compliance_with_pettingzoo_api(env: PePiPoEnv):
+    from pettingzoo.test import parallel_api_test
+    parallel_api_test(env)
+
+@pytest.mark.skip("Might not be useful")
+def test_random_agent_game(env: PePiPoEnv):
+    observations, infos = env.reset()
+
+    steps = 0
+
+    while env.agents:
+        # get action mask (the mask is the same for every player)
+        mask = observations["player_0"]["action_mask"]
+
+        # generate random policy
+        actions = {agent: env.action_space(agent).sample(mask) for agent in env.agents}
+
+        observations, rewards, terminations, truncations, infos = env.step(actions)
+
+        steps += 1
+        if steps > 500: assert False, f"Game went way too long. A winner or tie was not detected"
+
+    env.close()
