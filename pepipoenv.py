@@ -1,23 +1,32 @@
 from copy import copy
 
-from game import Game, t_Piece, Piece
+from game import Game, t_Piece, Piece, Colors
 
 from gymnasium.spaces import Discrete, Box
 import gymnasium as gym
 import numpy as np
-from pettingzoo import ParallelEnv
+from pettingzoo import AECEnv
+from pettingzoo.utils import agent_selector
 
 
-class PePiPoEnv(ParallelEnv): # gym.Env
+class PePiPoEnv(AECEnv):
 
     metadata = {
         "name": "pepipo_0v",
+        "is_parallelizable": False,
+        "render_fps": 1,
     }
 
     def __init__(self) -> None:
         self.game: Game = Game()
+        
+        # AEC API
         self.agents = [f"player_{p}" for p in range(self.game.n_players)]
-        self.possible_agents = copy(self.agents) # required for pz.ParallelEnv API
+        self.num_agents = len(self.agents)
+        self.possible_agents = copy(self.agents)
+        self.max_num_agents = len(self.possible_agents)
+        self._agent_selector = agent_selector(self.agents)
+        self.agent_selection = self._agent_selector.reset()
 
         # action space
         # 3 pieces actions (PE, PI, PO) * 64 possible spots on the board (8x8 board)
@@ -28,6 +37,15 @@ class PePiPoEnv(ParallelEnv): # gym.Env
         self.observation_spaces = {
             i: Box(low=-1, high=len(self.agents), shape=(self.game.board.board_size, self.game.board.board_size, 4)) for i in self.agents
         }
+
+
+    
+
+
+
+    def observe(self, agent):
+        self.game.current_player_indx = self.agents.index(agent)
+        return {"observation": self._get_obs(), "action_mask": self._get_action_mask()}
 
     def parse_piece_from_action(self, action: int) -> tuple[t_Piece, int, int]:
         # this is gross but whatever
@@ -46,7 +64,8 @@ class PePiPoEnv(ParallelEnv): # gym.Env
         y = indx % self.game.board.board_size
         return piece_type, x, y
 
-    def _get_obs(self):
+    def _get_obs(self) -> np.ndarray:
+        """Generates the observation from the state (board)"""
         n_channels = 4
         base = np.zeros(shape=(self.game.board.board_size, self.game.board.board_size, n_channels), dtype=np.int8)
         for x in range(self.game.board.board_size):
@@ -69,61 +88,99 @@ class PePiPoEnv(ParallelEnv): # gym.Env
     def observation_space(self, agent) -> np.ndarray:
         return self.observation_spaces[agent]
     
-    def _get_action_mask(self) -> np.ndarray:
+    def _get_action_mask(self, agent) -> np.ndarray:
+        # NOTE: T
         mask = np.zeros(shape=(3*64), dtype=np.int8)
         # iterate through all possible actions 
         # and mark 1 if legal and 0 if illegal
         for action in range(3*64):
             piece_type, x, y = self.parse_piece_from_action(action)
-            move_is_legal, _ = self.game.validate_move(x, y, piece_type)
+            move_is_legal, _ = self.game.validate_move(x, y, piece_type, agent)
             mask[action] = 1 if move_is_legal else 0
-
         return mask
 
     def action_space(self, agent):
         return self.action_spaces[agent]
     
+
+
     def step(self, actions):
 
-        for player in self.agents:
-            
-            # parse piece type and coordinates from action
-            action = actions[player]
-            piece_type, x, y = self.parse_piece_from_action(action)
+        p0_action = actions["player_0"]
+        p1_action = actions["player_1"]
 
-            # apply action (update the state)
-            move_is_valid, reason = self.game.validate_move(x, y, piece_type)
-            assert move_is_valid, f"Got invalid action for agent {player}: {action} {piece_type} ({x}, {y}) {reason}"
-            self.game.make_move(x, y, piece_type)
+        # execute actions
+        self.game.current_player_indx = 0
+        p0_piece_type, x, y = self.parse_piece_from_action(p0_action)
+        move_is_valid, reason = self.game.validate_move(x, y, p0_piece_type)
+        try:
+            assert move_is_valid, f"Invalid player_0 move: {reason} ({x}, {y}) {p0_piece_type}"
+        except Exception:
+            breakpoint
+        self.game.make_move(x, y, p0_piece_type)
 
-            # generate observations
-            observations = {i: {"observation": self._get_obs(), "action_mask": self._get_action_mask()} for i in self.agents}
+        # action nask needs to be updated. 
+        # NOTE: BOTH AGENTS ARE GENERATING THE SAME ACTION AND SO PLAYER_1's ACTION 
+        # WILL ALWAYS BE INVALID BECAUSE PLAYER_1's PIECE IS THERE
 
-            # Calculate reward
-            if self.game.check_winner():
-                print('won')
-                rewards = {i: -1 for i in self.agents} # lose: -1
-                rewards[player] = 1                    # win : +1
-                truncations = {i: True for i in self.agents}
-                terminations = {i: True for i in self.agents}
-                self.agents = []
-            elif self.game.check_tie():
-                print('tie')
-                rewards = {i: 0 for i in self.agents} # Tie:  0
-                truncations = {i: True for i in self.agents}
-                terminations = {i: True for i in self.agents}
-                self.agents = [] # NOTE: required for pz?
-            else:
-                print('none')
-                rewards = {i: 0 for i in self.agents}
-                truncations = {i: False for i in self.agents}
-                terminations = {i: False for i in self.agents}
-            
-            self.game.rotate_player()
+        self.game.current_player_indx = 1
+        p1_piece_type, x, y = self.parse_piece_from_action(p1_action)
+        move_is_valid, reason = self.game.validate_move(x, y, p1_piece_type)
+        try:
+            assert move_is_valid, f"Invalid player_1 move: {reason} ({x}, {y}) {p1_piece_type}"
+        except Exception:
+            breakpoint
+        self.game.make_move(x, y, p1_piece_type)
 
-        infos = {i: {} for i in self.agents}            
+        # generate action masks
+        self.game.current_player_indx = 0
+        p0_mask = self._get_action_mask()
+
+        self.game.current_player_indx = 1
+        p1_mask = self._get_action_mask()
+
+
+        # check termination conditions
+        terminations = {i: False for i in self.agents}
+        rewards = {i: 0 for i in self.agents}
+        self.game.current_player_indx = 0
+        if self.game.check_winner():
+            rewards = {"player_0": 1, "player_1": -1}
+            terminations = {i: True for i in self.agents}
+            self.agents = []
+
+        self.game.current_player_indx = 1
+        if self.game.check_winner():
+            print(self.game.current_player_indx)
+            rewards = {"player_0": -1, "player_1": 1}
+            terminations = {i: True for i in self.agents}
+            self.agents = []
+
+        # check truncation conditions
+        truncations = {i: False for i in self.agents}
+        self.game.current_player_indx = 0
+        if self.game.check_tie():
+            rewards = {"player_0": 0, "player_1": 0}
+            truncations = {i: True for i in self.agents}
+            self.agents = []
+
+        self.game.current_player_indx = 1
+        if self.game.check_tie():
+            rewards = {"player_0": 0, "player_1": 0}
+            truncations = {i: True for i in self.agents}
+            self.agents = []
+
+        # get observations
+        observations = {
+            "player_0": {"observation": self._get_obs(), "action_mask": p0_mask},
+            "player_1": {"observation": self._get_obs(), "action_mask": p1_mask}
+        }
+
+        # generate dummy infos
+        infos = {"player_0": {}, "player_1": {}}
+
         return observations, rewards, terminations, truncations, infos
-
+    
     def reset(self, seed=None, options=None):
         self.game = Game() # resets board
 
@@ -151,57 +208,54 @@ if __name__ == "__main__":
 
     env = PePiPoEnv()
 
-    observations, infos = env.reset()
+    for agent in env.agent_iter():
+        observation, reward, termination, truncation, info = env.last()
 
+        if termination or truncation:
+            action = None
+        else:
+            # invalid action masking is optional and environment-dependent
+            if "action_mask" in info:
+                mask = info["action_mask"]
+            elif isinstance(observation, dict) and "action_mask" in observation:
+                mask = observation["action_mask"]
+            else:
+                mask = None
+            action = env.action_space(agent).sample(mask) # this is where you would insert your policy
 
-    steps = 0
-
-    while env.agents:
-        # get action mask (the mask is the same for every player)
-        mask = observations["player_0"]["action_mask"]
-
-        print("********************* BEFORE *************************************")
-
-        env.render()
-
-        # generate random policy
-        actions = {agent: env.action_space(agent).sample(observations[agent]["action_mask"]) for agent in env.agents}
-
-        try:
-            observations, rewards, terminations, truncations, infos = env.step(actions)
-        except Exception as e:
-            print(e)
-            print("Action : ", actions, "player_0: ", env.parse_piece_from_action(actions["player_0"]), "player_1: ", env.parse_piece_from_action(actions["player_1"]))
-            print("Steps  : ", steps+1)
-            print("Rewards: ", rewards)
-            print("Terms  : ", terminations)
-            print("Truncs : ", truncations)
-            idk = 0
-            break
-
-        steps += 1
-        print("Action : ", actions, "player_0: ", env.parse_piece_from_action(actions["player_0"]), "player_1: ", env.parse_piece_from_action(actions["player_1"]))
-        print("Steps  : ", steps)
-        print("Rewards: ", rewards)
-        print("Terms  : ", terminations)
-        print("Truncs : ", truncations)
-        idk = 0
-
-        env.render()
-
-        print("************************ END *************************************")
-
-        # input()
-
-        if terminations["player_0"] or terminations["player_1"]: break
-        if truncations["player_0"] or truncations["player_1"]: break
-
-
+        env.step(action)
     env.close()
 
 
-    print("********************** END")
-    print("Steps  : ", steps)
-    print("Rewards: ", rewards)
-    print("Terms  : ", terminations)
-    print("Truncs : ", truncations)
+
+
+
+
+
+
+
+
+
+    # observations, infos = env.reset()
+
+    # steps = 0
+
+    # while env.agents:
+
+    #     env.render()
+
+    #     # generate random policy
+    #     actions = {agent: env.action_space(agent).sample(observations[agent]["action_mask"]) for agent in env.agents}
+
+    #     observations, rewards, terminations, truncations, infos = env.step(actions)
+
+
+    # env.close()
+
+    # env.render()
+
+    # print("********************** END")
+    # print("Steps  : ", steps)
+    # print("Rewards: ", rewards)
+    # print("Terms  : ", terminations)
+    # print("Truncs : ", truncations)
