@@ -1,9 +1,6 @@
-from copy import copy
-
 from game import Game, t_Piece, Piece, Colors
 
-from gymnasium.spaces import Discrete, Box
-import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector
@@ -22,30 +19,30 @@ class PePiPoEnv(AECEnv):
         
         # AEC API
         self.agents = [f"player_{p}" for p in range(self.game.n_players)]
-        self.num_agents = len(self.agents)
-        self.possible_agents = copy(self.agents)
-        self.max_num_agents = len(self.possible_agents)
+        self.possible_agents = self.agents[:]
         self._agent_selector = agent_selector(self.agents)
         self.agent_selection = self._agent_selector.reset()
+        self.terminations = {i: False for i in self.agents}
+        self.truncations = {i: False for i in self.agents}
+        self.rewards = {i: 0 for i in self.agents}
+        self.infos = {i: {} for i in self.agents}
+
+        self._cumulative_rewards = {agent: 0 for agent in self.agents}
 
         # action space
         # 3 pieces actions (PE, PI, PO) * 64 possible spots on the board (8x8 board)
-        self.action_spaces = {i: Discrete(3*64) for i in self.agents}
+        self.action_spaces = {i: spaces.Discrete(3*64) for i in self.agents}
 
         # obs space
         # 8x8x4
+        # Not sure why I have to make the obs space a dict, this was how the connect_four env is (and other classic pz envs)
         self.observation_spaces = {
-            i: Box(low=-1, high=len(self.agents), shape=(self.game.board.board_size, self.game.board.board_size, 4)) for i in self.agents
+            i: spaces.Dict({
+                "observation": spaces.Box(low=-1, high=3, shape=(self.game.board.board_size, self.game.board.board_size, 4), dtype=np.int8),
+                "action_mask": spaces.Box(low=0, high=1, shape=(3*64,), dtype=np.int8)
+            }) for i in self.agents
         }
 
-
-    
-
-
-
-    def observe(self, agent):
-        self.game.current_player_indx = self.agents.index(agent)
-        return {"observation": self._get_obs(), "action_mask": self._get_action_mask()}
 
     def parse_piece_from_action(self, action: int) -> tuple[t_Piece, int, int]:
         # this is gross but whatever
@@ -64,8 +61,12 @@ class PePiPoEnv(AECEnv):
         y = indx % self.game.board.board_size
         return piece_type, x, y
 
+    def observe(self, agent):
+        return {"observation": self._get_obs(), "action_mask": self._get_action_mask(agent)}
+
     def _get_obs(self) -> np.ndarray:
-        """Generates the observation from the state (board)"""
+        """Generates the observation from the state (board). All agents have the same observation space."""
+        player_to_obs = {"": -1, "player_0": 0, "player_1": 1}
         n_channels = 4
         base = np.zeros(shape=(self.game.board.board_size, self.game.board.board_size, n_channels), dtype=np.int8)
         for x in range(self.game.board.board_size):
@@ -79,121 +80,88 @@ class PePiPoEnv(AECEnv):
                 base[x, y, 1] = cell[1]._typename.value
 
                 # 3rd channel represents owner of piece in index 0
-                base[x, y, 2] = cell[0].player_indx
+                # -1 if t_Piece.EMPTY, else use the index of the player in self.agents
+                base[x, y, 2] = player_to_obs[cell[0].player_id]
 
                 # 4th channel represents owner of piece in index 1
-                base[x, y, 3] = cell[1].player_indx
+                # -1 if t_Piece.EMPTY, else use the index of the player in self.agents
+                base[x, y, 3] = player_to_obs[cell[1].player_id]
         return base
 
     def observation_space(self, agent) -> np.ndarray:
         return self.observation_spaces[agent]
     
     def _get_action_mask(self, agent) -> np.ndarray:
-        # NOTE: T
         mask = np.zeros(shape=(3*64), dtype=np.int8)
         # iterate through all possible actions 
         # and mark 1 if legal and 0 if illegal
         for action in range(3*64):
             piece_type, x, y = self.parse_piece_from_action(action)
-            move_is_legal, _ = self.game.validate_move(x, y, piece_type, agent)
-            mask[action] = 1 if move_is_legal else 0
+            mask[action] = 1 if self.game.validate_move(x, y, piece_type, agent) else 0
         return mask
 
     def action_space(self, agent):
         return self.action_spaces[agent]
-    
 
+    def step(self, action):
+        if (self.terminations[self.agent_selection] or self.truncations[self.agent_selection]):
+            # handles stepping an agent which is already dead
+            # accepts a None action for the one agent, and moves the agent_selection to
+            # the next dead agent,  or if there are no more dead agents, to the next live agent
+            return self._was_dead_step(action)
+        
+        agent = self.agent_selection
+        
+        # NOTE: I don't understand self._cumulative_rewards
+        # the agent which stepped last had its _cumulative_rewards accounted for
+        # (because it was returned by last()), so the _cumulative_rewards for this
+        # agent should start again at 0
+        self._cumulative_rewards[agent] = 0
+        
+        
+        # decode action
+        piece_type, x, y = self.parse_piece_from_action(action)
 
-    def step(self, actions):
+        # print(agent, piece_type, x, y)
 
-        p0_action = actions["player_0"]
-        p1_action = actions["player_1"]
+        # validate move
+        assert self.game.validate_move(x, y, piece_type, agent)
 
-        # execute actions
-        self.game.current_player_indx = 0
-        p0_piece_type, x, y = self.parse_piece_from_action(p0_action)
-        move_is_valid, reason = self.game.validate_move(x, y, p0_piece_type)
-        try:
-            assert move_is_valid, f"Invalid player_0 move: {reason} ({x}, {y}) {p0_piece_type}"
-        except Exception:
-            breakpoint
-        self.game.make_move(x, y, p0_piece_type)
+        # make move
+        self.game.make_move(x, y, piece_type, agent)
 
-        # action nask needs to be updated. 
-        # NOTE: BOTH AGENTS ARE GENERATING THE SAME ACTION AND SO PLAYER_1's ACTION 
-        # WILL ALWAYS BE INVALID BECAUSE PLAYER_1's PIECE IS THERE
+        # check winner
+        if self.game.check_winner(agent):
+            print(f"{agent} won!")
+            self.rewards = {i: -1 for i in self.agents}
+            self.rewards[self.agent_selection] = 1  # winner gets +1 reward, loser gets -1
+            self.terminations = {i: True for i in self.agents}
+            self.truncations = {i: True for i in self.agents}
+        elif self.game.check_tie(agent):
+            print('Tie!')
+            self.rewards = {i: 0 for i in self.agents} # 0 reward for all agents in a tie
+            self.terminations = {i: True for i in self.agents}
+            self.truncations = {i: True for i in self.agents}
 
-        self.game.current_player_indx = 1
-        p1_piece_type, x, y = self.parse_piece_from_action(p1_action)
-        move_is_valid, reason = self.game.validate_move(x, y, p1_piece_type)
-        try:
-            assert move_is_valid, f"Invalid player_1 move: {reason} ({x}, {y}) {p1_piece_type}"
-        except Exception:
-            breakpoint
-        self.game.make_move(x, y, p1_piece_type)
+        # # selects the next agent.
+        # # Adds .rewards to ._cumulative_rewards
+        # self._accumulate_rewards()
 
-        # generate action masks
-        self.game.current_player_indx = 0
-        p0_mask = self._get_action_mask()
+        # Switch selection to next agents
+        self._cumulative_rewards[self.agent_selection] = 0
+        self.agent_selection = self._agent_selector.next()
 
-        self.game.current_player_indx = 1
-        p1_mask = self._get_action_mask()
-
-
-        # check termination conditions
-        terminations = {i: False for i in self.agents}
-        rewards = {i: 0 for i in self.agents}
-        self.game.current_player_indx = 0
-        if self.game.check_winner():
-            rewards = {"player_0": 1, "player_1": -1}
-            terminations = {i: True for i in self.agents}
-            self.agents = []
-
-        self.game.current_player_indx = 1
-        if self.game.check_winner():
-            print(self.game.current_player_indx)
-            rewards = {"player_0": -1, "player_1": 1}
-            terminations = {i: True for i in self.agents}
-            self.agents = []
-
-        # check truncation conditions
-        truncations = {i: False for i in self.agents}
-        self.game.current_player_indx = 0
-        if self.game.check_tie():
-            rewards = {"player_0": 0, "player_1": 0}
-            truncations = {i: True for i in self.agents}
-            self.agents = []
-
-        self.game.current_player_indx = 1
-        if self.game.check_tie():
-            rewards = {"player_0": 0, "player_1": 0}
-            truncations = {i: True for i in self.agents}
-            self.agents = []
-
-        # get observations
-        observations = {
-            "player_0": {"observation": self._get_obs(), "action_mask": p0_mask},
-            "player_1": {"observation": self._get_obs(), "action_mask": p1_mask}
-        }
-
-        # generate dummy infos
-        infos = {"player_0": {}, "player_1": {}}
-
-        return observations, rewards, terminations, truncations, infos
+        self._accumulate_rewards()
     
     def reset(self, seed=None, options=None):
         self.game = Game() # resets board
+        self.agents = self.possible_agents[:]
+        self.terminations = {i: False for i in self.agents}
+        self.truncations = {i: False for i in self.agents}
+        self.rewards = {i: 0 for i in self.agents}
+        self.infos = {i: {} for i in self.agents}
+        self._cumulative_rewards = {i: 0 for i in self.agents}
 
-        # The same observation and action_mask is passed to every agent
-        observations = {
-            i: {"observation": self._get_obs(), "action_mask": self._get_action_mask()} for i in self.agents
-        }
-
-        # create dummy info's that are required for parallel-to-aec conversion
-        infos = {i: {} for i in self.agents}
-
-        return observations, infos
-    
     def render(self) -> None:
         self.game.print_board()
 
@@ -203,59 +171,4 @@ class PePiPoEnv(AECEnv):
 
 if __name__ == "__main__":
 
-    # TODO: Seeing errors for invalid actions. Mask isn't providing good options I think
-    # TODO: Seems like sometimes the game doesn't term or trunc when it should (ex: game won)
-
-    env = PePiPoEnv()
-
-    for agent in env.agent_iter():
-        observation, reward, termination, truncation, info = env.last()
-
-        if termination or truncation:
-            action = None
-        else:
-            # invalid action masking is optional and environment-dependent
-            if "action_mask" in info:
-                mask = info["action_mask"]
-            elif isinstance(observation, dict) and "action_mask" in observation:
-                mask = observation["action_mask"]
-            else:
-                mask = None
-            action = env.action_space(agent).sample(mask) # this is where you would insert your policy
-
-        env.step(action)
-    env.close()
-
-
-
-
-
-
-
-
-
-
-
-    # observations, infos = env.reset()
-
-    # steps = 0
-
-    # while env.agents:
-
-    #     env.render()
-
-    #     # generate random policy
-    #     actions = {agent: env.action_space(agent).sample(observations[agent]["action_mask"]) for agent in env.agents}
-
-    #     observations, rewards, terminations, truncations, infos = env.step(actions)
-
-
-    # env.close()
-
-    # env.render()
-
-    # print("********************** END")
-    # print("Steps  : ", steps)
-    # print("Rewards: ", rewards)
-    # print("Terms  : ", terminations)
-    # print("Truncs : ", truncations)
+    pass

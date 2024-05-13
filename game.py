@@ -1,4 +1,3 @@
-# game.py
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -152,7 +151,7 @@ class Game:
     for x in range(self.board.board_size):
         for y in range(self.board.board_size):
             for p in (t_Piece.PE, t_Piece.PI, t_Piece.PO):
-                if self.validate_move(x, y, p, player_id)[0]:
+                if self.validate_move(x, y, p, player_id):
                     return False
     return True
 
@@ -174,7 +173,7 @@ class Game:
         for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             board_spaces = [self.board[x+w, y] for w in range(self.n_pieces_in_a_row_to_win)]
             if all(check_current_player_in_space(bs) for bs in board_spaces):
-                #print(f"{player_id} won h")
+                print(f"{player_id} won h")
                 return True
   
     # Check vertical
@@ -182,23 +181,21 @@ class Game:
         for y in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             board_spaces = [self.board[x, y+w] for w in range(self.n_pieces_in_a_row_to_win)]
             if all(check_current_player_in_space(bs) for bs in board_spaces):
-                #print(f"{player_id} won v")
+                print(f"{player_id} won v")
                 return True
   
     # Check diagonals (top-left to bottom-right)
     for y in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
         for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             if check_diagonal(x, y, 1, 1):
-                #print(f"{player_id} won tl-br")
+                print(f"{player_id} won tl-br")
                 return True
   
     # Check diagonals (top-right to bottom-left)
     for y in range(self.n_pieces_in_a_row_to_win - 1, self.board.board_size):
         for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
             if check_diagonal(x, y, 1, -1):
-                #print(f"{player_id} won tr-bl")
+                print(f"{player_id} won tr-bl")
                 return True
     return False
-
-
-
+  
