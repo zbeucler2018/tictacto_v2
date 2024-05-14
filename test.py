@@ -115,10 +115,10 @@ def test_compliance_with_pettingzoo_api(env: PePiPoEnv):
 
 def test_random_agent_game(env: PePiPoEnv):
     # TODO: Switch to AEC
+    RENDER = False
     t_steps = 0
 
     for agent in env.agent_iter():
-        # env.render()
         observation, reward, termination, truncation, info = env.last()
         t_steps += 1
 
@@ -135,6 +135,8 @@ def test_random_agent_game(env: PePiPoEnv):
             action = env.action_space(agent).sample(mask) # this is where you would insert your policy
 
         env.step(action)
+        
+        if RENDER: env.render()
 
         if t_steps > 500: assert False, "Random game went above 500 moves so something is wrong"
     env.close()

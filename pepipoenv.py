@@ -16,7 +16,7 @@ class PePiPoEnv(AECEnv):
 
     def __init__(self) -> None:
         self.game: Game = Game()
-        
+
         # AEC API
         self.agents = [f"player_{p}" for p in range(self.game.n_players)]
         self.possible_agents = self.agents[:]
@@ -29,17 +29,20 @@ class PePiPoEnv(AECEnv):
 
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
 
+        valid_piece_types = [t_Piece.PE, t_Piece.PI, t_Piece.PO]
+        total_spots_on_board = self.game.board.board_size * self.game.board.board_size
+
         # action space
         # 3 pieces actions (PE, PI, PO) * 64 possible spots on the board (8x8 board)
-        self.action_spaces = {i: spaces.Discrete(3*64) for i in self.agents}
+        self.action_spaces = {i: spaces.Discrete(valid_piece_types*total_spots_on_board) for i in self.agents}
 
         # obs space
         # 8x8x4
         # Not sure why I have to make the obs space a dict, this was how the connect_four env is (and other classic pz envs)
         self.observation_spaces = {
             i: spaces.Dict({
-                "observation": spaces.Box(low=-1, high=3, shape=(self.game.board.board_size, self.game.board.board_size, 4), dtype=np.int8),
-                "action_mask": spaces.Box(low=0, high=1, shape=(3*64,), dtype=np.int8)
+                "observation": spaces.Box(low=-1, high=valid_piece_types, shape=(self.game.board.board_size, self.game.board.board_size, 4), dtype=np.int8),
+                "action_mask": spaces.Box(low=0, high=1, shape=(valid_piece_types*total_spots_on_board,), dtype=np.int8)
             }) for i in self.agents
         }
 
