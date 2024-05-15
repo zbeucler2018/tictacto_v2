@@ -103,7 +103,11 @@ def test_piece_rules(game: Game):
     # PI's can only be placed in a spot with an empty PE
     assert game.board[0, 0][0]._typename == t_Piece.EMPTY and game.board[0, 0][1]._typename == t_Piece.PE
     assert game.validate_move(0, 0, t_Piece.PI, player), "Was not able to place a PI in a PE"
-    
+
+    # PI's cannot be placed on other PI's
+    game.make_move(0, 0, t_Piece.PI, player)
+    assert not game.validate_move(0, 0, t_Piece.PI, player), "Was able to place a PI on another PI"
+
 
 @pytest.fixture
 def env():
@@ -114,8 +118,8 @@ def test_compliance_with_pettingzoo_api(env: PePiPoEnv):
     api_test(env, num_cycles=1000, verbose_progress=True)
 
 def test_random_agent_game(env: PePiPoEnv):
-    # TODO: Switch to AEC
     RENDER = False
+    step_limit = 500
     t_steps = 0
 
     for agent in env.agent_iter():
@@ -132,13 +136,13 @@ def test_random_agent_game(env: PePiPoEnv):
                 mask = observation["action_mask"]
             else:
                 mask = None
-            action = env.action_space(agent).sample(mask) # this is where you would insert your policy
+            action = env.action_space(agent).sample(mask)
 
         env.step(action)
-        
+
         if RENDER: env.render()
 
-        if t_steps > 500: assert False, "Random game went above 500 moves so something is wrong"
+        if t_steps > step_limit: assert False, f"Random game went above {step_limit} moves so something is wrong"
     env.close()
 
 @pytest.mark.skip("Not written yet")
