@@ -24,3 +24,16 @@
 **random player chosen to start**
 
 board is 8x8
+
+
+# obs space
+- 8x8x1
+- op = oposing player
+
+0. empty
+1. my pe
+2. op pe
+3. my po
+4. op po
+5. my pi in my pe
+6. op pi in my pe

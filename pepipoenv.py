@@ -50,7 +50,7 @@ class PePiPoEnv(AECEnv):
         # Not sure why I have to make the obs space a dict, this was how the connect_four env is (and other classic pz envs)
         self.observation_spaces = {
             i: spaces.Dict({
-                "observation": spaces.Box(low=-1, high=len(valid_piece_types), shape=(self.game.board.board_size, self.game.board.board_size, 4), dtype=np.int8),
+                "observation": spaces.Box(low=0, high=7, shape=(self.game.board.board_size, self.game.board.board_size, 1), dtype=np.int8),
                 "action_mask": spaces.Box(low=0, high=1, shape=(len(valid_piece_types)*total_spots_on_board,), dtype=np.int8)
             }) for i in self.agents
         }
@@ -66,7 +66,7 @@ class PePiPoEnv(AECEnv):
 
     def parse_piece_from_action(self, action: int) -> tuple[t_Piece, int, int]:
         # this is gross but whatever
-        # TODO: unit test
+        # TODO: unit test?
         piece_type = -1
         if action > -1 and action < 64: # 0 to 63 inclusively
             piece_type = t_Piece.PI
@@ -82,7 +82,43 @@ class PePiPoEnv(AECEnv):
         return piece_type, x, y
 
     def observe(self, agent) -> dict:
-        return {"observation": self._get_obs(), "action_mask": self._get_action_mask(agent)}
+        return {"observation": self._get_obs_v2(agent), "action_mask": self._get_action_mask(agent)}
+    
+    def _get_obs_v2(self, agent) -> np.ndarray:
+        """Generates the observation from the state (board). ONLY WORKS FOR 2 PLAYERS"""
+        # NOTE: ONLY WORKS WITH 2 PLAYERS
+        # # Should this be normalized?
+        # All pollible states of a spot on the board
+        # 0. empty
+        # 1. my pe
+        # 2. op pe
+        # 3. my po
+        # 4. op po
+        # 5. my pi in my pe
+        # 6. op pi in my pe
+        # 7. op pi in op pe
+        base = np.zeros(shape=(self.game.board.board_size, self.game.board.board_size, 1), dtype=np.int8)
+        for x in range(self.game.board.board_size):
+            for y in range(self.game.board.board_size):
+                cell = self.game.board[x, y]
+
+                if cell[1].player_id == agent and cell[1]._typename == t_Piece.PE:
+                    base[x, y] = 1
+                if cell[1].player_id != agent and cell[1]._typename == t_Piece.PE:
+                    base[x, y] = 2
+                if cell[1].player_id == agent and cell[1]._typename == t_Piece.PO:
+                    base[x, y] = 3
+                if cell[1].player_id != agent and cell[1]._typename == t_Piece.PO:
+                    base[x, y] = 4
+                if (cell[0].player_id == agent and cell[0]._typename == t_Piece.PI) and (cell[1].player_id == agent and cell[1]._typename == t_Piece.PE):
+                    base[x, y] = 5
+                if (cell[0].player_id != agent and cell[0]._typename == t_Piece.PI) and (cell[1].player_id != agent and cell[1]._typename == t_Piece.PE):
+                    base[x, y] = 6
+                if (cell[1].player_id != agent and cell[1]._typename == t_Piece.PI) and (cell[0].player_id != agent and cell[0]._typename == t_Piece.PE):
+                    base[x, y] = 7
+        return base
+                
+
 
     def _get_obs(self) -> np.ndarray:
         """Generates the observation from the state (board). All agents have the same observation space."""
@@ -136,7 +172,7 @@ class PePiPoEnv(AECEnv):
         # the agent which stepped last had its _cumulative_rewards accounted for
         # (because it was returned by last()), so the _cumulative_rewards for this
         # agent should start again at 0
-        # self._cumulative_rewards[agent] = 0
+        self._cumulative_rewards[agent] = 0
 
 
         # decode action
