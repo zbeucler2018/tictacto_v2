@@ -1,209 +1,157 @@
-from dataclasses import dataclass
-from enum import Enum
-from typing import Optional
+import numpy as np
 
-# TODO: turn into string enum
-class Colors:
-  BLACK = "\033[30m"
-  RED = "\033[31m"
-  GREEN = "\033[32m"
-  YELLOW = "\033[33m"
-  BLUE = "\033[34m"
-  MAGENTA = "\033[35m"
-  CYAN = "\033[36m"
-  WHITE = "\033[37m"
-  UNDERLINE = "\033[4m"
-  RESET = "\033[0m"
+from enum import IntEnum, StrEnum
 
 
-PLAYER_COLOR_MAP = {
-   "player_0": Colors.GREEN,   # (0, 255, 0)
-   "player_1": Colors.BLUE,    # (0, 0, 255)
-   "player_2": Colors.RED,     # (255, 0, 0)
-   "player_3": Colors.MAGENTA  # (255, 0, 255)
+
+class PIECES(IntEnum):
+    EMPTY = -1
+    PE = 0
+    PI = 1
+    PO = 2
+
+class COLORS(StrEnum):
+    RESET = "\033[0m"
+    RED = "\033[31m"
+    BLUE = "\033[34m"
+    GREEN = "\033[32m"
+    CYAN = "\033[96m"
+    WHITE = "\033[97m"
+
+PLAYER_COLORS = {
+    # Mapping of colors to player
+    -1: COLORS.WHITE,
+    1: COLORS.GREEN,
+    2: COLORS.BLUE,
+    3: COLORS.CYAN,
+    4: COLORS.RED
 }
 
+PIECE_STR = {
+    PIECES.EMPTY: "..",
+    PIECES.PE: "O",
+    PIECES.PI: "*",
+    PIECES.PO: "@"
+}
 
-class t_Piece(Enum):
-  EMPTY = 0
-  PI = 1
-  PE = 2
-  PO = 3
-
-
-@dataclass
-class Piece:
-  _typename: t_Piece
-  player_id: Optional[str] = ""
-  color: Optional[Colors] = ""
-
-  def to_str(self) -> str:
-    match self._typename:
-      case t_Piece.EMPTY:
-        return self.color + " " + Colors.RESET
-      case t_Piece.PI:
-        return self.color + "." + Colors.RESET
-      case t_Piece.PE:
-        return self.color + "O" + Colors.RESET
-      case t_Piece.PO:
-        return self.color + "0" + Colors.RESET
-      case _:
-        return self.color + "?" + Colors.RESET
-
-
-class Board:
-  def __init__(self):
-    self.max_pieces_per_spot_on_board = 2
-    self.board_size = 8
-    self.board = []
-    self.empty_board()
-
-  def empty_board(self) -> None:
-    self.board = [ [Piece(t_Piece.EMPTY) for _ in range(self.max_pieces_per_spot_on_board)] for _ in range(self.board_size**self.max_pieces_per_spot_on_board) ]
-
-  def convert_xy_to_indx(self, x: int, y: int) -> int:
-    """Converts (x,y) cordinates to an index on the board"""
-    return x + y * self.board_size
-
-  def __setitem__(self, key, value):
-    x, y = key
-    indx = self.convert_xy_to_indx(x, y)
-    if isinstance(value, list):
-      self.board[indx] = value
-    elif isinstance(value, Piece):
-      # pi's go on the left and everything else
-      # on the right for rendering purposes
-      if value._typename == t_Piece.PI:
-        self.board[indx][0] = value
-      else:
-        self.board[indx][1] = value
-
-  def __getitem__(self, key):
-    x, y = key
-    index = self.convert_xy_to_indx(x, y)
-    return self.board[index]
-
-  def __repr__(self) -> str:
-    """Renders the board to the console"""
-    tmp = "   |0 ||1 ||2 ||3 ||4 ||5 ||6 || 7|\n\n"
-    for y in reversed(range(self.board_size)):  # Iterate in reverse for correct orientation
-        tmp += f"{y}| "
-        for x in range(self.board_size):
-          indx = self.convert_xy_to_indx(x, y)
-          l, r = self.board[indx]
-          tmp += f"|{l.to_str()}{r.to_str()}|"
-        tmp += "\n"
-    tmp += "\n"
-    return tmp
 
 
 class Game:
 
-  def __init__(self, n_players: int = 2, verbose: bool = False):
-    self.n_players = n_players
-    self.verbose = verbose
-    self.board = Board()
-    self.max_pos_per_player = 8
-    self.po_per_player = {"player_0": self.max_pos_per_player, "player_1": self.max_pos_per_player}
-    self.n_pieces_in_a_row_to_win = 5 # Need to get 5 in a row to win
+    def __init__(self):
+        self.n_players = 2
+        self.board_size = 8
+        self.po_limit = 8
+        self.win_length = 5
+        self.board = np.full((self.board_size, self.board_size, 3), PIECES.EMPTY, dtype=np.int8)
+        self.po_pieces = [self.po_limit] * self.n_players
 
-    assert (self.n_players < 5) and (self.n_players > 1), f"Invalid amount of players. PePiPo is played with 2-4 players, not {self.n_players}"
+    def make_move(self, row: int, col: int, piecetype: PIECES, player: int) -> bool:
+        if not self.validate_move(row, col, piecetype, player):
+            return False
+        # Place the piece
+        self.board[row, col, piecetype] = player
+        # Decrement PO count if applicable
+        if piecetype == PIECES.PO:
+            self.po_pieces[player-1] -= 1
+        return True
 
-  def play(self) -> None:
-    raise NotImplementedError()
+    def validate_move(self, row: int, col: int, piecetype: PIECES, player: int) -> bool:
+        spot_is_empty = np.all(self.board[row, col, :]==PIECES.EMPTY)
+        # PO placement (spot is empty and player has POs left)
+        if piecetype == PIECES.PO:
+            return (spot_is_empty and self.po_pieces[player-1] > 0)
 
-  def print_board(self) -> None:
-    print(self.board)
+        # PE placement (spot is empty)
+        if piecetype == PIECES.PE:
+            return spot_is_empty
+        
+        # PI placement (there is a PE but no PIs) 
+        if piecetype == PIECES.PI:
+            return (self.board[row, col, PIECES.PE] != PIECES.EMPTY and 
+                    self.board[row, col, PIECES.PI] == PIECES.EMPTY)
 
-  def validate_move(self, x: int, y: int, piece_type: t_Piece, player_id: str) -> bool:
-    """Returns true if the move is valid.
-    1. PE's and PO's can only be placed in empty spaces.
-    2. PI's can only be placed within PE's.
-    3. Player has not used all 8 of their PO's.
-    4. Move is within the board.
-    """
-    reason = -1
-    is_valid = False
-    # 1. PEs and POs can only be placed in empty spaces
-    if piece_type == t_Piece.PE and self.board[x, y][1]._typename == t_Piece.EMPTY:
-       reason = 0
-       is_valid = True
-    if (piece_type == t_Piece.PO) and self.board[x, y][1]._typename == t_Piece.EMPTY:
-      reason = 1
-      is_valid = True
-    # 2. PIs can only be placed within empty PEs
-    if piece_type == t_Piece.PI and self.board[x, y][1]._typename == t_Piece.PE and self.board[x,y][0]._typename == t_Piece.EMPTY:
-      reason = 2
-      is_valid = True
-    # 3. Player has used all 8 of their PO's
-    if piece_type == t_Piece.PO and self.po_per_player[player_id] == 0:
-      reason = 3
-      is_valid = False
-    # 4. Move is within the board
-    if x < 0 or x >= self.board.board_size or y < 0 or y >= self.board.board_size:
-      reason = 4
-      is_valid = False
-    # if self.verbose: print(f"validate_move({x}, {y}, {piece_type}, {player_id}) is_valid: {is_valid} reason: {reason}")
-    return is_valid # , reason
+        return False
+    
+    def check_win(self, player: int) -> bool:
+        """true if that player has a winning board"""
+        # Combine PE and PI for win checking
 
-  def make_move(self, x: int, y: int, piece_type: t_Piece, player_id: str) -> None:
-    """Places a piece on the board."""
-    piece = Piece(piece_type, player_id=player_id, color=PLAYER_COLOR_MAP[player_id])
-    self.board[x, y] = piece
-    if piece._typename == t_Piece.PO: # decrement player PO count
-        self.po_per_player[player_id] = self.po_per_player[player_id] - 1
+        pes = self.board[:, :, PIECES.PE] == player
+        pis = self.board[:, :, PIECES.PI] == player
+        pos = self.board[:, :, PIECES.PO] == player
+        
 
-  def check_tie(self, player_id: str) -> bool:
-    """Returns True if there is no more valid moves, False if not.
-    There is a tie game if there are no more valid moves left on the board.
-    """
-    for x in range(self.board.board_size):
-        for y in range(self.board.board_size):
-            for p in (t_Piece.PE, t_Piece.PI, t_Piece.PO):
-                if self.validate_move(x, y, p, player_id):
-                    return False
-    return True
 
-  def check_winner(self, player_id: str) -> bool:
-    """Returns True if the current player has won, False if not.
-    To win, the player must have 5 pieces in a row diagonally, horizontally, or vertically.
-    Also, a space with a PE and a PI count for both players.
-    """
-    def check_current_player_in_space(space: list[Piece, Piece]):
-        return space[0].player_id == player_id or space[1].player_id == player_id
+        win_board = np.logical_or(
+            # self.board[:, :, :] == player
+            pes, pis
+        )
+        win_board = np.logical_or(pos, win_board)
 
-    def check_diagonal(start_x: int, start_y: int, dx: int, dy: int) -> bool:
-        """Checks a diagonal starting from (start_x, start_y) in direction (dx, dy)."""
-        diagonal_pieces = [self.board[start_x + i*dx, start_y + i*dy] for i in range(self.n_pieces_in_a_row_to_win)]
-        return all(check_current_player_in_space(dp) for dp in diagonal_pieces)
+        # Check horizontal
+        for row in range(8):
+            for col in range(4):
+                if np.all(win_board[row, col:col+5] == True):
+                    return True
+        
+        # Check vertical
+        for col in range(8):
+            for row in range(4):
+                if np.all(win_board[row:row+5, col] == True):
+                    return True
+        
+        # Diagonal checks (both directions)
+        for row in range(4):
+            for col in range(4):
+                # Diagonal down-right
+                if np.all([win_board[row+i, col+i] for i in range(5)] == True):
+                    return True
+                
+                # Diagonal up-right
+                if np.all([win_board[row+4-i, col+i] for i in range(5)] == True):
+                    return True
+        
+        return False
 
-    # Check horizontal
-    for y in range(self.board.board_size):
-        for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
-            board_spaces = [self.board[x+w, y] for w in range(self.n_pieces_in_a_row_to_win)]
-            if all(check_current_player_in_space(bs) for bs in board_spaces):
-                if self.verbose: print(f"check_winner({player_id} won h")
-                return True
 
-    # Check vertical
-    for x in range(self.board.board_size):
-        for y in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
-            board_spaces = [self.board[x, y+w] for w in range(self.n_pieces_in_a_row_to_win)]
-            if all(check_current_player_in_space(bs) for bs in board_spaces):
-                if self.verbose: print(f"check_winner({player_id} won v")
-                return True
+    
 
-    # Check diagonals (top-left to bottom-right)
-    for y in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
-        for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
-            if check_diagonal(x, y, 1, 1):
-                if self.verbose: print(f"check_winner({player_id} won tl-br")
-                return True
+    def display(self) -> None:
+        print(" ", *[_ for _ in range(self.board_size)], sep="  ", end="\n")
+        for r in range(self.board_size):
+            cells = []
+            for c in range(self.board_size):
+                spot_is_empty = np.all(self.board[r, c, :]==PIECES.EMPTY)
+                colorize = lambda r,c,pce: str(PLAYER_COLORS[self.board[r,c,pce]]) + str(PIECE_STR[pce]) + str(COLORS.RESET)
 
-    # Check diagonals (top-right to bottom-left)
-    for y in range(self.n_pieces_in_a_row_to_win - 1, self.board.board_size):
-        for x in range(self.board.board_size - self.n_pieces_in_a_row_to_win + 1):
-            if check_diagonal(x, y, 1, -1):
-                if self.verbose: print(f"check_winner({player_id} won tr-bl")
-                return True
-    return False
+                if spot_is_empty:
+                    cells.append(PIECE_STR[PIECES.EMPTY])
+                # PE and PI
+                elif self.board[r, c, PIECES.PE] != PIECES.EMPTY and self.board[r, c, PIECES.PI] != PIECES.EMPTY:
+                    cells.append(PLAYER_COLORS[self.board[r, c, PIECES.PE]] + PIECE_STR[PIECES.PE] + \
+                                PLAYER_COLORS[self.board[r, c, PIECES.PI]] + PIECE_STR[PIECES.PI] + COLORS.RESET)
+                # PE and no PI
+                elif self.board[r, c, PIECES.PE] != PIECES.EMPTY and self.board[r, c, PIECES.PI] == PIECES.EMPTY:
+                    cells.append(f"{colorize(r,c,PIECES.PE)} ")
+                # PO
+                elif self.board[r, c, PIECES.PO] != PIECES.EMPTY:
+                    cells.append(f"{colorize(r,c,PIECES.PO)} ")
+                # else:
+                #     print("B: ", self.board[r, c, :])
+            print(f"{r}:", *cells, sep=" ", end="\n")
+            cells = []
+
+
+g = Game()
+
+g.make_move(0, 0, PIECES.PE, 2)
+
+g.make_move(0, 0, PIECES.PI, 1)
+g.make_move(0, 1, PIECES.PE, 1)
+g.make_move(0, 2, PIECES.PE, 1)
+g.make_move(0, 3, PIECES.PO, 1)
+g.make_move(0, 4, PIECES.PO, 1)
+
+g.display()
+print(g.check_win(1))

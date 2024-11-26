@@ -1,154 +1,163 @@
-from game import Game, Piece, t_Piece, Colors
-from pepipoenv import PePiPoEnv
-
 import pytest
+from game import GameBoard, PieceType
+"""
+# Functional tests
+    - Piece placement
+        - PI cant be placed on spot by itself
+        - PO cant be placed on occupied space
+        - PO cannot be placed more than 8 times
+        - PE cant be placed on occupied space
+    - Win validation
+        - 
+
+
 
 
 """
-board representation is right and its getter/setters are correct too
-
-I want to make sure that:
-
--  [x] a player can win in any direction
-    - [ ] a player can cross over another player with a pi and win
-- [x] pis can only be placed in a spot with a empty pe
-- [x] pes can only be placed in empty spots
-- [x] pos can only be placed in empty spots
-- [x] only 8 pos per player
-- [ ] game ends in a tie when there are no more valid spots left
-"""
-
+import pytest
+from typing import List, Tuple
 
 @pytest.fixture
-def game():
-    return Game()
+def board():
+    """Fixture to create a fresh board for each test"""
+    return GameBoard(size=8, num_players=2)
 
-def test_convert_xy_to_indx(game: Game):
-    assert game.board.convert_xy_to_indx(0, 0) == 0
-    assert game.board.convert_xy_to_indx(1, 1) == 9
-    assert game.board.convert_xy_to_indx(7, 7) == 63
+def place_sequence(board: GameBoard, positions: List[Tuple[int, int]], piece_type: PieceType, player: int):
+    """Helper function to place multiple pieces"""
+    for row, col in positions:
+        board.place_piece(row, col, piece_type, player)
 
-def test_validate_move(game: Game):
-    player = "player_0"
-    assert game.validate_move(0, 3, t_Piece.PE, player), "Could not place pe on empty valid spot"
-    assert game.validate_move(2, 2, t_Piece.PO, player), "Could not place po on empty valid spot"
-    assert not game.validate_move(0, 0, t_Piece.PI, player), "Was able to place a pi in an valid empty spot"
-    assert not game.validate_move(-1, 0, t_Piece.PE, player), "Was able to place piece (pe) outside of board (-1,0)"
-    assert not game.validate_move(8, 5, t_Piece.PE, player), "Was able to place piece (pe) outside of board (8,5)"
+def test_tie_all_po(board):
+    """Test tie condition when all empty spaces are blocked by PO pieces"""
+    # Fill first half of board with PO from player 1 (their max 8 POs)
+    for i in range(2):
+        for j in range(4):
+            assert board.place_piece(i, j, PieceType.PO, player=1)
+    
+    # Fill remaining spaces with PO from player 2
+    remaining_spaces = [(i, j) for i in range(8) for j in range(8) 
+                       if not (i < 2 and j < 4)]
+    
+    # Use only 8 POs from player 2
+    for i, (row, col) in enumerate(remaining_spaces):
+        if i < 8:
+            assert board.place_piece(row, col, PieceType.PO, player=2)
+            
+    # Fill rest with PE and PI to block all moves
+    for i, (row, col) in enumerate(remaining_spaces[8:]):
+        player = (i % 2) + 1
+        other_player = 2 if player == 1 else 1
+        assert board.place_piece(row, col, PieceType.PE, player)
+        assert board.place_piece(row, col, PieceType.PI, other_player)
+    
+    assert board.is_tie()
 
-def test_check_winner(game: Game):
-    player = "player_0"
-    assert not game.check_winner(player), "Detected win when the board was empty"
+def test_tie_all_pi(board):
+    """Test tie condition when all PE pieces have PI pieces on them"""
+    # Fill board with PE pieces alternating between players
+    for i in range(8):
+        for j in range(8):
+            player = ((i + j) % 2) + 1
+            assert board.place_piece(i, j, PieceType.PE, player)
+    
+    # Place PI pieces on all PE pieces
+    for i in range(8):
+        for j in range(8):
+            player = (((i + j) % 2) + 1) % 2 + 1  # Opposite player
+            assert board.place_piece(i, j, PieceType.PI, player)
+    
+    assert board.is_tie()
 
-    # Test horizontal wins
-    for y in range(game.board.board_size):
-        for x in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
-            for i in range(game.n_pieces_in_a_row_to_win):
-                game.make_move(x + i, y, t_Piece.PE, player)
-            assert game.check_winner(player), f"Could not detect horizontal win at ({x}, {y})"
-            game.board.empty_board()
+def test_not_tie_with_valid_moves(board):
+    """Test that game is not tied when valid moves exist"""
+    # Fill most of the board but leave some valid moves
+    for i in range(7):  # Leave last row empty
+        for j in range(8):
+            assert board.place_piece(i, j, PieceType.PE, player=1)
+    
+    assert not board.is_tie()
 
-    # Test vertical wins
-    for x in range(game.board.board_size):
-        for y in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
-            for i in range(game.n_pieces_in_a_row_to_win):
-                game.make_move(x, y + i, t_Piece.PE, player)
-            assert game.check_winner(player), f"Could not detect vertical win at ({x}, {y})"
-            game.board.empty_board()
-
-    # Test diagonal (top-left to bottom-right) wins
-    for y in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
-        for x in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
-            for i in range(game.n_pieces_in_a_row_to_win):
-                game.make_move(x + i, y + i, t_Piece.PE, player)
-            assert game.check_winner(player), f"Could not detect diagonal (top-left to bottom-right) win at ({x}, {y})"
-            game.board.empty_board()
-
-    # Test diagonal (top-right to bottom-left) wins
-    for y in range(game.n_pieces_in_a_row_to_win - 1, game.board.board_size):
-        for x in range(game.board.board_size - game.n_pieces_in_a_row_to_win + 1):
-            for i in range(game.n_pieces_in_a_row_to_win):
-                game.make_move(x + i, y - i, t_Piece.PE, player)
-            assert game.check_winner(player), f"Could not detect diagonal (top-right to bottom-left) win at ({x}, {y})"
-            game.board.empty_board()
-
-def test_po_rules(game: Game):
-    player = "player_0"
-    assert game.po_per_player[player] == game.max_pos_per_player, "Started the game with the wrong amount of POs"
-    game.make_move(0, 0, t_Piece.PO, player)
-    assert game.po_per_player[player] == game.max_pos_per_player - 1, "PO placement not reflected in record"
-    game.po_per_player[player] = 0
-    assert not game.validate_move(0, 1, t_Piece.PO, player), "Was able to place a PO when none are left"
-
-def test_piece_rules(game: Game):
-    player = "player_0"
-
-    def is_board_spot_completely_empty(x: int, y: int, g: Game) -> bool:
-        return g.board[x, y][0]._typename == t_Piece.EMPTY and g.board[x, y][1]._typename == t_Piece.EMPTY
-
-    # PE's can only be placed in empty spots
-    assert is_board_spot_completely_empty(0, 0, game), f"The test spot is not completely empty ({game.board[0, 0]})"
-    assert game.validate_move(0, 0, t_Piece.PE, player), "Was not able to place a PE in a empty spot"
-    game.make_move(0, 0, t_Piece.PE, player)
-
-    # PO's can only be placed in empty spots
-    assert is_board_spot_completely_empty(1, 1, game), f"The test spot is not completely empty ({game.board[1, 1]})"
-    assert game.validate_move(1, 1, t_Piece.PO, player), "Was not able to place a PO in a empty spot"
-    game.make_move(1, 1, t_Piece.PO, player)
-
-    # PI's can only be placed in a spot with an empty PE
-    assert is_board_spot_completely_empty(2, 2, game) and not game.validate_move(2, 2, t_Piece.PI, player), "Was able to place a PI in a empty spot"
-    assert not game.validate_move(1, 1, t_Piece.PI, player), "Was able to place a PI spot with a PO"
-
-    # PI's can only be placed in a spot with an empty PE
-    assert game.board[0, 0][0]._typename == t_Piece.EMPTY and game.board[0, 0][1]._typename == t_Piece.PE
-    assert game.validate_move(0, 0, t_Piece.PI, player), "Was not able to place a PI in a PE"
-
-    # PI's cannot be placed on other PI's
-    game.make_move(0, 0, t_Piece.PI, player)
-    assert not game.validate_move(0, 0, t_Piece.PI, player), "Was able to place a PI on another PI"
-
-
-@pytest.fixture
-def env():
-    return PePiPoEnv()
-
-def test_compliance_with_pettingzoo_api(env: PePiPoEnv):
-    from pettingzoo.test import api_test
-    api_test(env, num_cycles=1000, verbose_progress=True)
-
-def test_random_agent_game(env: PePiPoEnv):
-    RENDER = False
-    step_limit = 500
-    t_steps = 0
-
-    for agent in env.agent_iter():
-        observation, reward, termination, truncation, info = env.last()
-        t_steps += 1
-
-        if termination or truncation:
-            action = None
-        else:
-            # invalid action masking is optional and environment-dependent
-            if "action_mask" in info:
-                mask = info["action_mask"]
-            elif isinstance(observation, dict) and "action_mask" in observation:
-                mask = observation["action_mask"]
+def test_tie_partial_board(board):
+    """Test tie condition with partially filled board but no valid moves"""
+    # Create a pattern where no winning sequence is possible
+    # Use alternating PO pieces to block any potential 5-in-a-row
+    for i in range(8):
+        for j in range(8):
+            if (i + j) % 2 == 0:
+                player = 1 if (i * j) % 2 == 0 else 2
+                if player == 1 and board.po_count[1] < 8:
+                    assert board.place_piece(i, j, PieceType.PO, player)
+                elif player == 2 and board.po_count[2] < 8:
+                    assert board.place_piece(i, j, PieceType.PO, player)
+                else:
+                    # Fill with PE+PI combination when out of POs
+                    assert board.place_piece(i, j, PieceType.PE, 1)
+                    assert board.place_piece(i, j, PieceType.PI, 2)
             else:
-                mask = None
-            action = env.action_space(agent).sample(mask)
+                # Fill remaining spaces with PE+PI combinations
+                assert board.place_piece(i, j, PieceType.PE, 2)
+                assert board.place_piece(i, j, PieceType.PI, 1)
+    
+    assert board.is_tie()
 
-        env.step(action)
+def test_not_tie_with_winning_possibility(board):
+    """Test that game is not tied when a winning sequence is still possible"""
+    # Fill board with alternating PE pieces but leave a potential winning sequence
+    for i in range(8):
+        for j in range(8):
+            if not (i == 0 and j < 5):  # Leave top row first 5 spaces empty
+                player = ((i + j) % 2) + 1
+                assert board.place_piece(i, j, PieceType.PE, player)
+    
+    assert not board.is_tie()
+    
+    # Fill potential winning sequence
+    for j in range(5):
+        assert board.place_piece(0, j, PieceType.PE, player=1)
+    
+    assert board.check_win(0, 4, player=1)
+    assert not board.is_tie()
 
-        if RENDER: env.render()
+def test_tie_after_blocked_win(board):
+    """Test tie condition after blocking all possible winning sequences"""
+    # Create a scenario where both players have used their POs to block 
+    # each other's winning opportunities
+    
+    # Player 1 creates potential winning sequence
+    for i in range(4):
+        assert board.place_piece(0, i, PieceType.PE, player=1)
+    
+    # Player 2 blocks with PO
+    assert board.place_piece(0, 4, PieceType.PO, player=2)
+    
+    # Fill rest of the board with alternating PE+PI combinations
+    for i in range(1, 8):
+        for j in range(8):
+            if not board.has_piece(i, j):
+                assert board.place_piece(i, j, PieceType.PE, player=1)
+                assert board.place_piece(i, j, PieceType.PI, player=2)
+    
+    assert board.is_tie()
 
-        if t_steps > step_limit: assert False, f"Random game went above {step_limit} moves so something is wrong"
-    env.close()
+def test_get_valid_moves(board):
+    """Test getting valid moves for current player"""
+    # Place some pieces
+    board.place_piece(0, 0, PieceType.PE, player=1)
+    board.place_piece(0, 1, PieceType.PO, player=2)
+    board.place_piece(0, 2, PieceType.PE, player=1)
+    board.place_piece(0, 2, PieceType.PI, player=2)
+    
+    valid_moves = board.get_valid_moves(player=1)
+    
+    # Should include:
+    # - Empty spaces for PE
+    # - PE spaces without PI for PI placement
+    # - Should not include PO spaces or PE+PI combinations
+    
+    assert (0, 0) in valid_moves  # Can place PI on existing PE
+    assert (0, 1) not in valid_moves  # Cannot place on PO
+    assert (0, 2) not in valid_moves  # Cannot place on PE+PI
+    assert (1, 0) in valid_moves  # Can place PE on empty space
 
-@pytest.mark.skip("Not written yet")
-def test_action_mask_generation(env: PePiPoEnv):
-    return
-
-@pytest.mark.skip("Not written yet")
-def test_observation_generation(env: PePiPoEnv):
-    return
+if __name__ == '__main__':
+    pytest.main([__file__])

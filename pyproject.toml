@@ -1,0 +1,25 @@
+[project]
+name = "PePiPo"
+version = "0.0.1"
+description = ""
+authors = [
+  { name="Zack Beucler", email="zbeucler@gmail.com" },
+]
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+]
+
+# Required libraries
+dependencies = ["numpy"]
+
+# Optional dependencies
+[project.optional-dependencies]
+dev = [
+  "black", 
+  "isort", 
+  "mypy",
+  "pytest"
+]
