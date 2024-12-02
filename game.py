@@ -10,6 +10,13 @@ class PIECES(IntEnum):
     PI = 1
     PO = 2
 
+PIECE_STR = {
+    PIECES.EMPTY: "..",
+    PIECES.PE: "O",
+    PIECES.PI: "*",
+    PIECES.PO: "@"
+}
+
 class COLORS(StrEnum):
     RESET = "\033[0m"
     RED = "\033[31m"
@@ -27,13 +34,6 @@ PLAYER_COLORS = {
     4: COLORS.RED
 }
 
-PIECE_STR = {
-    PIECES.EMPTY: "..",
-    PIECES.PE: "O",
-    PIECES.PI: "*",
-    PIECES.PO: "@"
-}
-
 
 
 class Game:
@@ -46,6 +46,7 @@ class Game:
         self.board = np.full((self.board_size, self.board_size, 3), PIECES.EMPTY, dtype=np.int8)
         self.po_pieces = [self.po_limit] * self.n_players
 
+
     def make_move(self, row: int, col: int, piecetype: PIECES, player: int) -> bool:
         if not self.validate_move(row, col, piecetype, player):
             return False
@@ -55,6 +56,7 @@ class Game:
         if piecetype == PIECES.PO:
             self.po_pieces[player-1] -= 1
         return True
+
 
     def validate_move(self, row: int, col: int, piecetype: PIECES, player: int) -> bool:
         spot_is_empty = np.all(self.board[row, col, :]==PIECES.EMPTY)
@@ -73,21 +75,15 @@ class Game:
 
         return False
     
+
     def check_win(self, player: int) -> bool:
         """true if that player has a winning board"""
-        # Combine PE and PI for win checking
-
-        pes = self.board[:, :, PIECES.PE] == player
-        pis = self.board[:, :, PIECES.PI] == player
-        pos = self.board[:, :, PIECES.PO] == player
-        
-
-
-        win_board = np.logical_or(
-            # self.board[:, :, :] == player
-            pes, pis
-        )
-        win_board = np.logical_or(pos, win_board)
+        # Combine PE, PI, and PO layers for win checking
+        win_board = np.logical_or.reduce([
+            self.board[:, :, PIECES.PE] == player,
+            self.board[:, :, PIECES.PI] == player,
+            self.board[:, :, PIECES.PO] == player
+        ]).astype(int)
 
         # Check horizontal
         for row in range(8):
@@ -114,8 +110,39 @@ class Game:
         
         return False
 
-
     
+    def check_tie(self) -> bool:
+        # Check each player
+        for player in range(1, self.n_players + 1):
+            # Flag to track if the player has any valid moves
+            has_valid_moves = False
+            
+            # Check all board positions for possible moves
+            for row in range(self.board_size):
+                for col in range(self.board_size):
+                    # Check PE placement
+                    if self.validate_move(row, col, PIECES.PE, player):
+                        has_valid_moves = True
+                        break
+                    # Check PI placement
+                    if self.validate_move(row, col, PIECES.PI, player):
+                        has_valid_moves = True
+                        break
+                    # Check PO placement
+                    if self.validate_move(row, col, PIECES.PO, player):
+                        has_valid_moves = True
+                        break
+                # Exit early if valid move found
+                if has_valid_moves:
+                    break
+            
+            # If no moves found for this player, continue checking others
+            if not has_valid_moves:
+                return True
+        
+        # If all players have moves, no tie
+        return False
+
 
     def display(self) -> None:
         print(" ", *[_ for _ in range(self.board_size)], sep="  ", end="\n")
@@ -141,17 +168,3 @@ class Game:
                 #     print("B: ", self.board[r, c, :])
             print(f"{r}:", *cells, sep=" ", end="\n")
             cells = []
-
-
-g = Game()
-
-g.make_move(0, 0, PIECES.PE, 2)
-
-g.make_move(0, 0, PIECES.PI, 1)
-g.make_move(0, 1, PIECES.PE, 1)
-g.make_move(0, 2, PIECES.PE, 1)
-g.make_move(0, 3, PIECES.PO, 1)
-g.make_move(0, 4, PIECES.PO, 1)
-
-g.display()
-print(g.check_win(1))
