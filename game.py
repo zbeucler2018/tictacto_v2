@@ -144,6 +144,10 @@ class Game:
         return False
 
 
+    def check_game_over(self) -> bool:
+        return self.check_win(1) or self.check_win(2) or self.check_tie()
+
+
     def display(self) -> None:
         print(" ", *[_ for _ in range(self.board_size)], sep="  ", end="\n")
         for r in range(self.board_size):
