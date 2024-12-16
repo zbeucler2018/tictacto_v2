@@ -47,29 +47,29 @@ class Game:
         self.po_pieces = [self.po_limit] * self.n_players
 
 
-    def make_move(self, row: int, col: int, piecetype: PIECES, player: int) -> bool:
-        if not self.validate_move(row, col, piecetype, player):
+    def make_move(self, row: int, col: int, piece: PIECES, player: int) -> bool:
+        if not self.validate_move(row, col, piece, player):
             return False
         # Place the piece
-        self.board[row, col, piecetype] = player
+        self.board[row, col, piece] = player
         # Decrement PO count if applicable
-        if piecetype == PIECES.PO:
+        if piece == PIECES.PO:
             self.po_pieces[player-1] -= 1
         return True
 
 
-    def validate_move(self, row: int, col: int, piecetype: PIECES, player: int) -> bool:
+    def validate_move(self, row: int, col: int, piece: PIECES, player: int) -> bool:
         spot_is_empty = np.all(self.board[row, col, :]==PIECES.EMPTY)
         # PO placement (spot is empty and player has POs left)
-        if piecetype == PIECES.PO:
+        if piece == PIECES.PO:
             return (spot_is_empty and self.po_pieces[player-1] > 0)
 
         # PE placement (spot is empty)
-        if piecetype == PIECES.PE:
+        if piece == PIECES.PE:
             return spot_is_empty
         
         # PI placement (there is a PE but no PIs) 
-        if piecetype == PIECES.PI:
+        if piece == PIECES.PI:
             return (self.board[row, col, PIECES.PE] != PIECES.EMPTY and 
                     self.board[row, col, PIECES.PI] == PIECES.EMPTY)
 
@@ -149,6 +149,7 @@ class Game:
 
 
     def display(self) -> None:
+        print("\n", "-"*10)
         print(" ", *[_ for _ in range(self.board_size)], sep="  ", end="\n")
         for r in range(self.board_size):
             cells = []

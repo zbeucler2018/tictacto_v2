@@ -1,5 +1,6 @@
 import pytest
 from game import Game as Game, PIECES
+import utils
 
 @pytest.fixture
 def game():
@@ -84,3 +85,41 @@ def test_check_win(game: Game, player: int):
 
 def test_check_tie(game: Game):
     assert not game.check_tie(), "Freshly created game marked as tie"
+
+
+def test_util_spot_is_empty(game: Game):
+    for r in range(game.board_size):
+        for c in range(game.board_size):
+            assert utils.is_spot_empty(game, r, c)
+
+    r, c = (1, 1)
+    game.make_move(r, c, PIECES.PE, player=1)
+    assert not utils.is_spot_empty(game, r, c)
+
+    game.make_move(r, c, PIECES.PI, player=2)
+    assert not utils.is_spot_empty(game, r, c)
+
+    r, c = (1, 2)
+    game.make_move(r, c, PIECES.PO, player=1)
+    assert not utils.is_spot_empty(game, r, c)
+
+    r, c = (1, 2)
+    game.make_move(r, c, PIECES.PO, player=2)
+    assert not utils.is_spot_empty(game, r, c)
+
+
+def test_util_does_spot_contain_player(game: Game):
+    players = [1, 2]
+    for player in players:
+        for r in range(game.board_size):
+            for c in range(game.board_size):
+                assert not utils.does_spot_contain_player(game, r, c, player)
+
+
+def test_util_is_winning_move(game: Game):
+    assert not utils.is_winning_move(game, 0, 0, PIECES.PE, 1), "Empty spot marked as winning spot"
+    game.make_move(0, 1, PIECES.PE, player=1)
+    game.make_move(0, 2, PIECES.PE, player=1)
+    game.make_move(0, 3, PIECES.PO, player=1)
+    game.make_move(0, 4, PIECES.PO, player=1)
+    assert utils.is_winning_move(game, 0, 0, PIECES.PE, 1)
